@@ -506,6 +506,7 @@ export function LeadForm() {
             min={1}
             value={formData.attendees}
             onChange={(e) => updateField("attendees", e.target.value)}
+            onWheel={(e) => e.currentTarget.blur()}
             onBlur={() => handleBlur("attendees")}
             className={touched.attendees && errors.attendees ? "lead-form-touched" : ""}
           />
