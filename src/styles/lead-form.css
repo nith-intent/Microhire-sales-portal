@@ -66,14 +66,11 @@
 }
 
 .lead-form-date-picker .react-datepicker-wrapper {
-  display: flex;
   width: 100%;
-  align-items: stretch;
-  gap: 0.35rem;
 }
 
 .lead-form-date-picker .react-datepicker__input-container {
-  flex: 1;
+  width: 100%;
   min-width: 0;
 }
 
@@ -83,15 +80,14 @@
 }
 
 .lead-form-date-picker .react-datepicker__calendar-icon {
-  padding: 0 10px;
-  border: 1px solid var(--border-input);
-  border-radius: 10px;
-  background: #fff;
-  box-sizing: border-box;
+  padding: 0.5em;
+  color: var(--text-light);
+  cursor: pointer;
+  display: none;
 }
 
 .lead-form-date-picker .react-datepicker__calendar-icon:hover {
-  border-color: #cfd7e6;
+  color: var(--color-primary, #4f46e5);
 }
 
 .lead-form-field {
@@ -119,7 +115,9 @@
   background: #fff;
   font-family: "Inter", sans-serif;
   font-size: 15px;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 .lead-form-field input:hover,
@@ -268,7 +266,9 @@
 }
 
 @keyframes org-spinner {
-  to { transform: translateY(-50%) rotate(360deg); }
+  to {
+    transform: translateY(-50%) rotate(360deg);
+  }
 }
 
 .org-autocomplete-dropdown {
@@ -347,7 +347,9 @@
   color: #666;
   cursor: pointer;
   white-space: nowrap;
-  transition: border-color 0.15s ease, background 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
 }
 
 .org-address-clear:hover {
