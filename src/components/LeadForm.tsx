@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import DatePicker from "react-datepicker";
 import { CheckCircle, PaperPlaneTilt } from "@phosphor-icons/react";
@@ -39,6 +39,51 @@ export interface LeadFormData {
   attendees: string;
 }
 
+/** Per-day start/end times. One entry per day between event start and end (inclusive). */
+export interface EventDay {
+  /** YYYY-MM-DD (kept in display order to match the date pickers). */
+  date: string;
+  /** HH:mm (24h) — used directly as <input type="time"> value. */
+  startTime: string;
+  /** HH:mm (24h) — used directly as <input type="time"> value. */
+  endTime: string;
+}
+
+const DEFAULT_EVENT_START_TIME = "09:00";
+const DEFAULT_EVENT_END_TIME = "17:00";
+
+/** Build the inclusive list of YYYY-MM-DD dates between two dates (or empty if invalid). */
+function enumerateDates(start: Date | null, end: Date | null): string[] {
+  if (!start || !end || end < start) return [];
+  const out: string[] = [];
+  const cursor = new Date(start);
+  cursor.setHours(0, 0, 0, 0);
+  const last = new Date(end);
+  last.setHours(0, 0, 0, 0);
+  while (cursor <= last) {
+    const y = cursor.getFullYear();
+    const m = String(cursor.getMonth() + 1).padStart(2, "0");
+    const d = String(cursor.getDate()).padStart(2, "0");
+    out.push(`${y}-${m}-${d}`);
+    cursor.setDate(cursor.getDate() + 1);
+    if (out.length > 60) break; // safety cap
+  }
+  return out;
+}
+
+/** Format a YYYY-MM-DD string as a human label like "Wed, 19 Aug 2026". */
+function formatDayLabel(iso: string): string {
+  const [y, m, d] = iso.split("-").map((n) => parseInt(n, 10));
+  if (!y || !m || !d) return iso;
+  const dt = new Date(y, m - 1, d);
+  return dt.toLocaleDateString("en-AU", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
 function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
@@ -59,6 +104,9 @@ export function LeadForm() {
   });
   const [errors, setErrors] = useState<Partial<Record<keyof LeadFormData, string>>>({});
   const [touched, setTouched] = useState<Partial<Record<keyof LeadFormData, boolean>>>({});
+  /** Per-day schedule. Auto-grown/trimmed when the date range changes; users can override times per day. */
+  const [eventDays, setEventDays] = useState<EventDay[]>([]);
+  const [eventDaysError, setEventDaysError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [lastSubmittedEmail, setLastSubmittedEmail] = useState("");
@@ -73,6 +121,37 @@ export function LeadForm() {
   const updateField = (field: keyof LeadFormData, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
     setErrors((prev) => ({ ...prev, [field]: undefined }));
+  };
+
+  // Auto-rebuild eventDays whenever the date range changes:
+  //  - Add new rows (defaulted to 09:00–17:00) when days are added
+  //  - Drop rows when days are removed
+  //  - Preserve user-edited times for dates that survive the range change
+  useEffect(() => {
+    const start = parseDDMMYYYY(formData.eventStartDate);
+    const end = parseDDMMYYYY(formData.eventEndDate);
+    const dates = enumerateDates(start, end);
+    if (dates.length === 0) {
+      setEventDays((prev) => (prev.length === 0 ? prev : []));
+      return;
+    }
+    setEventDays((prev) => {
+      const byDate = new Map(prev.map((d) => [d.date, d] as const));
+      const next: EventDay[] = dates.map((date) => byDate.get(date) ?? {
+        date,
+        startTime: DEFAULT_EVENT_START_TIME,
+        endTime: DEFAULT_EVENT_END_TIME,
+      });
+      // Skip re-render when nothing actually changed (referential stability for any consumers).
+      if (next.length === prev.length && next.every((d, i) => d === prev[i])) return prev;
+      return next;
+    });
+    setEventDaysError(null);
+  }, [formData.eventStartDate, formData.eventEndDate]);
+
+  const updateEventDay = (date: string, field: "startTime" | "endTime", value: string) => {
+    setEventDays((prev) => prev.map((d) => (d.date === date ? { ...d, [field]: value } : d)));
+    setEventDaysError(null);
   };
 
   const handleBlur = (field: keyof LeadFormData) => {
@@ -103,7 +182,10 @@ export function LeadForm() {
     if (!formData.organisation.trim()) {
       newErrors.organisation = "Organisation is required";
     }
-    if (!formData.organisationAddress.trim()) {
+    // Address is only required for a brand-new organisation. When an existing
+    // org is selected from autocomplete (existingOrgId set), RentalPoint already
+    // has the org record, so a missing address must not block the lead.
+    if (!existingOrgId && !formData.organisationAddress.trim()) {
       newErrors.organisationAddress = "Organisation address is required";
     }
     if (!formData.firstName.trim()) {
@@ -144,6 +226,27 @@ export function LeadForm() {
       newErrors.attendees = "Please enter a valid number of attendees";
     }
 
+    // Per-day schedule validation. Backend enforces this too, but client validation gives
+    // immediate feedback and avoids a round-trip on every typo.
+    let scheduleError: string | null = null;
+    if (eventDays.length > 0) {
+      for (const day of eventDays) {
+        if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(day.startTime) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(day.endTime)) {
+          scheduleError = `Each day needs a valid Start and End time (HH:mm).`;
+          break;
+        }
+        if (day.endTime <= day.startTime) {
+          scheduleError = `End time must be after start time on ${formatDayLabel(day.date)}.`;
+          break;
+        }
+      }
+    }
+    setEventDaysError(scheduleError);
+    if (scheduleError) {
+      setErrors(newErrors);
+      return false;
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -173,6 +276,13 @@ export function LeadForm() {
       ...formData,
       eventStartDate: toLocalISODateString(startForApi),
       eventEndDate: toLocalISODateString(endForApi),
+      // Backend (LeadsController.ValidateEventDays) expects one entry per day between
+      // eventStartDate and eventEndDate (inclusive) in YYYY-MM-DD with HH:mm times.
+      eventDays: eventDays.map((d) => ({
+        date: d.date,
+        startTime: d.startTime,
+        endTime: d.endTime,
+      })),
       ...(existingOrgId ? { existingOrgId } : {}),
     };
 
@@ -221,6 +331,8 @@ export function LeadForm() {
       setTouched({});
       setExistingOrgId(null);
       setOrgAddressLocked(false);
+      setEventDays([]);
+      setEventDaysError(null);
       setLastSubmittedEmail(submittedEmail);
     } catch (err) {
       setErrors({
@@ -303,6 +415,7 @@ export function LeadForm() {
             <label htmlFor="organisationAddress">
               Organisation Address
               {orgAddressLocked && <span style={{ fontWeight: 400, fontSize: "0.7rem", marginLeft: "0.5rem", color: "#888" }}>(auto-filled)</span>}
+              {!orgAddressLocked && existingOrgId != null && <span style={{ fontWeight: 400, fontSize: "0.7rem", marginLeft: "0.5rem", color: "#888" }}>(optional — existing organisation)</span>}
             </label>
             <div className={orgAddressLocked ? "org-address-row" : ""}>
               <div className={orgAddressLocked ? "lead-form-field" : ""} style={orgAddressLocked ? {} : undefined}>
@@ -460,6 +573,49 @@ export function LeadForm() {
           </div>
         </div>
       </div>
+
+      {eventDays.length > 0 && (
+        <div className="lead-form-section">
+          <div className="lead-form-grid">
+            <div className="lead-form-field">
+              <label>
+                {eventDays.length === 1 ? "Event Times" : "Event Times (per day)"}
+                <span style={{ fontWeight: 400, fontSize: "0.7rem", marginLeft: "0.5rem", color: "#888" }}>
+                  default 09:00–17:00, adjust as needed
+                </span>
+              </label>
+              <div className="event-days-grid">
+                {eventDays.map((day) => (
+                  <div key={day.date} className="event-day-row">
+                    <div className="event-day-label">{formatDayLabel(day.date)}</div>
+                    <div className="event-day-times">
+                      <label className="event-day-time-field">
+                        <span>Start</span>
+                        <input
+                          type="time"
+                          value={day.startTime}
+                          step={900}
+                          onChange={(e) => updateEventDay(day.date, "startTime", e.target.value)}
+                        />
+                      </label>
+                      <label className="event-day-time-field">
+                        <span>End</span>
+                        <input
+                          type="time"
+                          value={day.endTime}
+                          step={900}
+                          onChange={(e) => updateEventDay(day.date, "endTime", e.target.value)}
+                        />
+                      </label>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {eventDaysError && <span className="field-error">{eventDaysError}</span>}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="lead-form-section">
         <div className="lead-form-grid two-col">

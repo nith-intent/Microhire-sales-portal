@@ -356,3 +356,74 @@
   border-color: #cfd7e6;
   background: #f5f7fa;
 }
+
+/* ---------- Per-day event schedule ---------- */
+.event-days-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.event-day-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.65rem 0.85rem;
+  border: 1px solid #e3e7ef;
+  border-radius: 8px;
+  background: #fafbfd;
+}
+
+.event-day-label {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #2c3142;
+}
+
+.event-day-times {
+  display: flex;
+  gap: 0.75rem;
+  align-items: end;
+}
+
+.event-day-time-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.75rem;
+  color: #6a7080;
+  font-weight: 500;
+}
+
+.event-day-time-field input[type="time"] {
+  padding: 0.45rem 0.6rem;
+  border: 1px solid #d8dde7;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  background: #fff;
+  min-width: 110px;
+}
+
+.event-day-time-field input[type="time"]:focus {
+  outline: none;
+  border-color: #5b8def;
+  box-shadow: 0 0 0 2px rgba(91, 141, 239, 0.15);
+}
+
+@media (max-width: 540px) {
+  .event-day-row {
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+  }
+  .event-day-times {
+    width: 100%;
+  }
+  .event-day-time-field {
+    flex: 1;
+  }
+  .event-day-time-field input[type="time"] {
+    width: 100%;
+    min-width: 0;
+  }
+}
